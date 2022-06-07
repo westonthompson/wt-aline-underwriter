@@ -186,7 +186,7 @@ public class ApplicationService {
                             Member primaryMember = members.iterator().next();
 
                             log.info("Creating accounts: {}", request.getApplicationType());
-                            Set<Account> accounts = accountService.createAccount(savedApplication.getApplicationType(), primaryMember, members);
+                            Set<Account> accounts = accountService.createAccount(savedApplication, primaryMember, members);
 
                             log.info("Attaching members to accounts...");
                             members.forEach(member -> member.setAccounts(accounts));

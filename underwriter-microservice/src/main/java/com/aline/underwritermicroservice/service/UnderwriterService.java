@@ -1,8 +1,12 @@
 package com.aline.underwritermicroservice.service;
 
+import com.aline.core.exception.BadRequestException;
 import com.aline.core.model.Applicant;
 import com.aline.core.model.Application;
 import com.aline.core.model.ApplicationStatus;
+import com.aline.core.model.ApplicationType;
+import com.aline.core.model.loan.Loan;
+import com.aline.core.model.loan.LoanStatus;
 import com.aline.underwritermicroservice.service.function.UnderwriterConsumer;
 import org.springframework.stereotype.Service;
 
@@ -42,6 +46,17 @@ public class UnderwriterService {
         } else {
             underwriterConsumer.respond(ApplicationStatus.DENIED, reasons.toArray(new String[0]));
         }
+    }
+
+    public Loan createLoan(Application application, UnderwriterConsumer underwriterConsumer) {
+        if (application.getApplicationType() != ApplicationType.LOAN)
+            throw new BadRequestException("Unable to create a loan with a non-loan application.");
+
+        return Loan.builder()
+                .loanType(application.getLoanType())
+                .amount(application.getApplicationAmount())
+                .status(LoanStatus.PENDING)
+                .build();
     }
 
     private void checkIncome(Application application, List<String> reasons) {

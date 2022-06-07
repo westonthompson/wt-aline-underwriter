@@ -1,16 +1,20 @@
 package com.aline.underwritermicroservice.service;
 
 import com.aline.core.exception.BadRequestException;
+import com.aline.core.model.Application;
 import com.aline.core.model.ApplicationType;
 import com.aline.core.model.Member;
 import com.aline.core.model.account.Account;
 import com.aline.core.model.account.AccountStatus;
 import com.aline.core.model.account.CheckingAccount;
+import com.aline.core.model.account.LoanAccount;
 import com.aline.core.model.account.SavingsAccount;
+import com.aline.core.model.loan.Loan;
 import com.aline.core.repository.AccountRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
+import javax.transaction.Transactional;
 import java.util.HashSet;
 import java.util.Optional;
 import java.util.Set;
@@ -30,14 +34,15 @@ public class AccountService {
 
     /**
      * Create a single or multiple accounts based on the applicationType
-     * @param applicationType See {@link ApplicationType} to see what kinds of accounts can be created.
+     * @param application See {@link Application} to see what kinds of accounts can be created.
      * @param primaryAccountHolder The primary member.
      * @param members The members attached to the account including the primary member.
      * @return A set of accounts that were created.
      */
-    public Set<Account> createAccount(ApplicationType applicationType, Member primaryAccountHolder, Set<Member> members) {
+    @Transactional
+    public Set<Account> createAccount(Application application, Member primaryAccountHolder, Set<Member> members) {
         Set<Account> accounts = new HashSet<>();
-        switch (applicationType) {
+        switch (application.getApplicationType()) {
 
             case CHECKING:
                 accounts.add(createCheckingAccount(primaryAccountHolder, members));
@@ -75,6 +80,20 @@ public class AccountService {
                 .members(members)
                 .status(AccountStatus.ACTIVE)
                 .build();
+        return Optional.of(repository.save(account)).orElseThrow(() -> new BadRequestException("Account was not saved."));
+    }
+
+
+    private Account createLoan(Application application, Member primaryPayer, Set<Member> payers) {
+        if (application.getApplicationType() != ApplicationType.LOAN)
+            throw new BadRequestException("Attempting to create a loan with an application type that does not include a loan.");
+        Loan loan = Loan.builder()
+                .loanType(application.getLoanType())
+                .amount(application.getApplicationAmount())
+                .build();
+        LoanAccount account = LoanAccount.builder()
+                .build();
+
         return Optional.of(repository.save(account)).orElseThrow(() -> new BadRequestException("Account was not saved."));
     }
 

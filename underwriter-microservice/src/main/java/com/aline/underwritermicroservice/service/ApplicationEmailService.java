@@ -51,18 +51,7 @@ public class ApplicationEmailService {
      * @param response The ApplyResponse returned by the Underwriter service.
      */
     public void sendDenialEmail(ApplyResponse response) {
-        ApplicantResponse primaryApplicant = getPrimaryApplicantResponse(response);
-        String email = primaryApplicant.getEmail();
-        String name = primaryApplicant.getFirstName();
-        String landingPortalUrl = appConfig.getLandingPortal();
-        String reason = String.join(", ", response.getReasons());
-
-        Map<String, String> variables = new HashMap<>();
-        variables.put("name", name);
-        variables.put("reason", reason);
-        variables.put("landingPortalUrl", landingPortalUrl);
-
-        emailService.sendHtmlEmail("Thank you for applying!", "application/denied-notification", email, variables);
+        sendApplicationResponseEmail(response, "application/denied-notification");
     }
 
     /**
@@ -70,6 +59,14 @@ public class ApplicationEmailService {
      * @param response The ApplyResponse returned by the Underwriter service.
      */
     public void sendPendingEmail(ApplyResponse response) {
+        sendApplicationResponseEmail(response, "application/pending-notification");
+    }
+
+    private ApplicantResponse getPrimaryApplicantResponse(ApplyResponse response) {
+        return response.getApplicants().get(0);
+    }
+
+    private void sendApplicationResponseEmail(ApplyResponse response, String templateName) {
         ApplicantResponse primaryApplicant = getPrimaryApplicantResponse(response);
         String email = primaryApplicant.getEmail();
         String name = primaryApplicant.getFirstName();
@@ -81,11 +78,7 @@ public class ApplicationEmailService {
         variables.put("reason", reason);
         variables.put("landingPortalUrl", landingPortalUrl);
 
-        emailService.sendHtmlEmail("Thank you for applying!", "application/pending-notification", email, variables);
-    }
-
-    private ApplicantResponse getPrimaryApplicantResponse(ApplyResponse response) {
-        return response.getApplicants().get(0);
+        emailService.sendHtmlEmail("Thank you for applying!", templateName, email, variables);
     }
 
     /**

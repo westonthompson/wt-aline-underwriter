@@ -15,6 +15,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import javax.transaction.Transactional;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.Optional;
 import java.util.Set;
@@ -31,6 +32,7 @@ import java.util.Set;
 public class AccountService {
 
     private final AccountRepository repository;
+    private final UnderwriterService underwriterService;
 
     /**
      * Create a single or multiple accounts based on the applicationType
@@ -43,7 +45,6 @@ public class AccountService {
     public Set<Account> createAccount(Application application, Member primaryAccountHolder, Set<Member> members) {
         Set<Account> accounts = new HashSet<>();
         switch (application.getApplicationType()) {
-
             case CHECKING:
                 accounts.add(createCheckingAccount(primaryAccountHolder, members));
                 break;
@@ -53,6 +54,9 @@ public class AccountService {
             case CHECKING_AND_SAVINGS:
                 accounts.add(createCheckingAccount(primaryAccountHolder, members));
                 accounts.add(createSavingsAccount(primaryAccountHolder, members));
+                break;
+            case LOAN:
+                accounts.add(createLoan(application, primaryAccountHolder, members));
                 break;
             default:
                 break;
@@ -87,11 +91,15 @@ public class AccountService {
     private Account createLoan(Application application, Member primaryPayer, Set<Member> payers) {
         if (application.getApplicationType() != ApplicationType.LOAN)
             throw new BadRequestException("Attempting to create a loan with an application type that does not include a loan.");
-        Loan loan = Loan.builder()
-                .loanType(application.getLoanType())
-                .amount(application.getApplicationAmount())
-                .build();
+        Loan loan = underwriterService.createLoan(application);
         LoanAccount account = LoanAccount.builder()
+                .primaryAccountHolder(primaryPayer)
+                .balance(0)
+                .loan(loan)
+                .members(payers)
+                .payments(new ArrayList<>())
+                .paymentHistory(new ArrayList<>())
+                .status(AccountStatus.ACTIVE)
                 .build();
 
         return Optional.of(repository.save(account)).orElseThrow(() -> new BadRequestException("Account was not saved."));

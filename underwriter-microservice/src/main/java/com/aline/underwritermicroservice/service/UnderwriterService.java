@@ -5,11 +5,15 @@ import com.aline.core.model.Applicant;
 import com.aline.core.model.Application;
 import com.aline.core.model.ApplicationStatus;
 import com.aline.core.model.ApplicationType;
+import com.aline.core.model.Member;
 import com.aline.core.model.loan.Loan;
 import com.aline.core.model.loan.LoanStatus;
+import com.aline.underwritermicroservice.model.CreditScoreRating;
 import com.aline.underwritermicroservice.service.function.UnderwriterConsumer;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDate;
+import java.time.Period;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -48,15 +52,68 @@ public class UnderwriterService {
         }
     }
 
-    public Loan createLoan(Application application, UnderwriterConsumer underwriterConsumer) {
+    public Loan createLoan(Application application) {
         if (application.getApplicationType() != ApplicationType.LOAN)
             throw new BadRequestException("Unable to create a loan with a non-loan application.");
+
+        Applicant applicant = application.getPrimaryApplicant();
 
         return Loan.builder()
                 .loanType(application.getLoanType())
                 .amount(application.getApplicationAmount())
                 .status(LoanStatus.PENDING)
+                .apr(calculateApr(getCreditScore(applicant)))
                 .build();
+    }
+
+    public int getCreditScore(Applicant applicant) {
+        // This generates a fake credit score for testing purposes
+        int age = Period.between(applicant.getDateOfBirth(), LocalDate.now()).getYears();
+        int income = applicant.getIncome();
+        int score = 0;
+
+        score += age >= 18 ? 300 : 0;
+        score += age >= 25 ? 200 : 0;
+        score -= income <= 1500000 ? 300 : 0;
+        score += income >= 3000000 ? 200 : 0;
+        score += income >= 5500000 ? 150 : 0;
+
+        return score;
+    }
+
+    public CreditScoreRating rateCreditScore(int creditScore) {
+        CreditScoreRating rating = null;
+
+        if (creditScore >= 300 && creditScore <= 579) {
+            rating = CreditScoreRating.POOR;
+        } else if (creditScore >= 580 && creditScore <= 669) {
+            rating = CreditScoreRating.FAIR;
+        } else if (creditScore >= 670 && creditScore <= 739) {
+            rating  = CreditScoreRating.GOOD;
+        } else if (creditScore >= 740 && creditScore <= 799) {
+            rating = CreditScoreRating.VERY_GOOD;
+        } else if (creditScore >= 800) {
+            rating = CreditScoreRating.EXCELLENT;
+        }
+
+        return rating;
+    }
+
+    public float calculateApr(int creditScore) {
+        CreditScoreRating rating = rateCreditScore(creditScore);
+        switch (rating) {
+            case POOR:
+                return 24.99f;
+            case FAIR:
+                return 18.5f;
+            case GOOD:
+                return 11.5f;
+            case VERY_GOOD:
+                return 8.25f;
+            case EXCELLENT:
+                return 5.99f;
+        }
+        return 30.98f;
     }
 
     private void checkIncome(Application application, List<String> reasons) {

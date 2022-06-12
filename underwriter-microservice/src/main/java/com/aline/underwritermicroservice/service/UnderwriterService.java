@@ -5,11 +5,12 @@ import com.aline.core.model.Applicant;
 import com.aline.core.model.Application;
 import com.aline.core.model.ApplicationStatus;
 import com.aline.core.model.ApplicationType;
-import com.aline.core.model.Member;
 import com.aline.core.model.loan.Loan;
 import com.aline.core.model.loan.LoanStatus;
+import com.aline.core.repository.LoanRepository;
 import com.aline.underwritermicroservice.model.CreditScoreRating;
 import com.aline.underwritermicroservice.service.function.UnderwriterConsumer;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
@@ -22,6 +23,7 @@ import java.util.List;
  * <p>Used to approve or deny applications automatically.</p>
  */
 @Service
+@RequiredArgsConstructor
 public class UnderwriterService {
 
     public static class DenyReasons {
@@ -63,6 +65,8 @@ public class UnderwriterService {
                 .amount(application.getApplicationAmount())
                 .status(LoanStatus.PENDING)
                 .apr(calculateApr(getCreditScore(applicant)))
+                .term(calculateTerm(application))
+                .startDate(LocalDate.now())
                 .build();
     }
 
@@ -114,6 +118,43 @@ public class UnderwriterService {
                 return 5.99f;
         }
         return 30.98f;
+    }
+
+    public int calculateTerm(Application application) {
+        Applicant applicant = application.getPrimaryApplicant();
+        int creditScore = getCreditScore(applicant);
+        CreditScoreRating rating = rateCreditScore(creditScore);
+        int income = applicant.getIncome();
+        int idealIncome = 3000000;
+        int applyAmount = application.getApplicationAmount();
+
+        if (applyAmount < 200000) {
+            return 12;
+        }
+
+        if (income - idealIncome <= 0) {
+            if (applyAmount < 1000000) {
+                return 24;
+            }
+            return 36;
+        }
+
+        if (income - idealIncome >= idealIncome) {
+            if (applyAmount < 1000000) {
+                return 6;
+            }
+            return 12;
+        }
+
+        if (applyAmount > 10000000) {
+            return 60;
+        }
+
+        if (applyAmount > 5000000) {
+            return 48;
+        }
+
+        return 24;
     }
 
     private void checkIncome(Application application, List<String> reasons) {

@@ -16,6 +16,7 @@ import com.aline.core.exception.notfound.ApplicationNotFoundException;
 import com.aline.core.model.Applicant;
 import com.aline.core.model.Application;
 import com.aline.core.model.ApplicationStatus;
+import com.aline.core.model.ApplicationType;
 import com.aline.core.model.Member;
 import com.aline.core.model.account.Account;
 import com.aline.core.repository.ApplicationRepository;
@@ -137,20 +138,22 @@ public class ApplicationService {
                     .applicants(applicants)
                     .applicationType(request.getApplicationType())
                     .applicationStatus(ApplicationStatus.PENDING)
+                    .applicationAmount(request.getApplicationAmount())
                     .build();
 
         } else {
 
-            Set<Long> applicantIds = Optional.ofNullable(request.getApplicantIds())
-                    .orElseThrow(() -> new BadRequestException("Field 'noApplicants' was set to true but no existing applicant ids were provided."));
+            Set<String> membershipNumbers = Optional.ofNullable(request.getMembershipNumbers())
+                    .orElseThrow(() -> new BadRequestException("Field 'noApplicants' was set to true but no existing membership ids were provided."));
 
-            if (applicantIds.isEmpty())
+            if (membershipNumbers.isEmpty())
                 throw new BadRequestException("Field 'noApplicants' was set to true but field 'applicantIds' is empty.");
 
             log.info("Creating application with existing applicants.");
 
-            LinkedHashSet<Applicant> applicants = applicantIds.stream()
-                    .map(applicantService::getApplicantById)
+            LinkedHashSet<Applicant> applicants = membershipNumbers.stream()
+                    .map(memberService::getMemberByMembershipId)
+                    .map(Member::getApplicant)
                     .map(applicantResponse -> mapper.map(applicantResponse, Applicant.class))
                     .collect(Collectors.toCollection(LinkedHashSet::new));
 
@@ -161,6 +164,7 @@ public class ApplicationService {
                     .applicants(applicants)
                     .primaryApplicant(primaryApplicant)
                     .applicationStatus(ApplicationStatus.PENDING)
+                    .applicationAmount(request.getApplicationAmount())
                     .build();
         }
 
@@ -180,9 +184,17 @@ public class ApplicationService {
 
                         if (status == ApplicationStatus.APPROVED) {
                             log.info("Application was approved... Creating members.");
-                            LinkedHashSet<Member> members = savedApplication.getApplicants().stream()
-                                    .map(memberService::createMember)
-                                    .collect(Collectors.toCollection(LinkedHashSet::new));
+                            LinkedHashSet<Member> members;
+                            if (request.getNoApplicants() && request.getMembershipNumbers() != null) {
+                                members = request.getMembershipNumbers().stream()
+                                        .map(memberService::getMemberByMembershipId)
+                                        .collect(Collectors.toCollection(LinkedHashSet::new));
+                            } else {
+                                members = savedApplication.getApplicants().stream()
+                                        .map(memberService::createMember)
+                                        .collect(Collectors.toCollection(LinkedHashSet::new));
+                            }
+
                             Member primaryMember = members.iterator().next();
 
                             log.info("Creating accounts: {}", request.getApplicationType());

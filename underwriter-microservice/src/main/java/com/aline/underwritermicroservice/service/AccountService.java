@@ -10,15 +10,24 @@ import com.aline.core.model.account.CheckingAccount;
 import com.aline.core.model.account.LoanAccount;
 import com.aline.core.model.account.SavingsAccount;
 import com.aline.core.model.loan.Loan;
+import com.aline.core.model.payment.Payment;
+import com.aline.core.model.payment.PaymentStatus;
 import com.aline.core.repository.AccountRepository;
+import com.aline.core.repository.LoanRepository;
+import com.aline.core.repository.PaymentRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import javax.transaction.Transactional;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeFormatterBuilder;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * Account Service
@@ -32,6 +41,8 @@ import java.util.Set;
 public class AccountService {
 
     private final AccountRepository repository;
+    private final LoanRepository loanRepository;
+    private final PaymentRepository paymentRepository;
     private final UnderwriterService underwriterService;
 
     /**
@@ -88,21 +99,56 @@ public class AccountService {
     }
 
 
-    private Account createLoan(Application application, Member primaryPayer, Set<Member> payers) {
+    @Transactional
+    public Account createLoan(Application application, Member primaryPayer, Set<Member> payers) {
         if (application.getApplicationType() != ApplicationType.LOAN)
             throw new BadRequestException("Attempting to create a loan with an application type that does not include a loan.");
         Loan loan = underwriterService.createLoan(application);
         LoanAccount account = LoanAccount.builder()
                 .primaryAccountHolder(primaryPayer)
                 .balance(0)
-                .loan(loan)
+                .loan(loanRepository.save(loan))
                 .members(payers)
                 .payments(new ArrayList<>())
                 .paymentHistory(new ArrayList<>())
                 .status(AccountStatus.ACTIVE)
                 .build();
 
-        return Optional.of(repository.save(account)).orElseThrow(() -> new BadRequestException("Account was not saved."));
+        int term = loan.getTerm();
+        float apr = loan.getApr();
+        int amount = loan.getAmount() + Math.round(loan.getAmount() * (apr/100f));
+        LocalDate startDate = loan.getStartDate();
+        int month = startDate.getMonthValue();
+        int day = Math.min(startDate.getDayOfMonth(), 28);
+        int year = startDate.getYear();
+        startDate = LocalDate.of(year, month, day);
+
+        LoanAccount loanAccount = Optional.of(repository.save(account)).orElseThrow(() -> new BadRequestException("Account was not saved."));
+
+        List<Payment> payments = getPaymentAmountsList(amount, term, new ArrayList<>(), loanAccount, startDate);
+        loanAccount.setPayments(paymentRepository.saveAll(payments));
+        loanAccount.setPaymentHistory(new ArrayList<>());
+
+        return loanAccount;
+    }
+
+    public List<Payment> getPaymentAmountsList(int amount, int term, List<Payment> payments, LoanAccount loanAccount, LocalDate paymentDate) {
+        if (amount <= 0 || term == 0) return payments;
+        int paymentAmount = amount / term;
+        paymentDate = paymentDate.plusMonths(1);
+        Payment payment = Payment.builder()
+                .amount(paymentAmount)
+                .payer(loanAccount.getPrimaryAccountHolder())
+                .status(PaymentStatus.PENDING)
+                .dueDate(paymentDate)
+                .description(String.format("Loan payment %s", paymentDate.format(DateTimeFormatter.ofPattern("MM/dd/yyyy"))))
+                .payToAccount(loanAccount)
+                .build();
+        payments.add(payment);
+        term--;
+        amount -= paymentAmount;
+
+        return getPaymentAmountsList(amount, term, payments, loanAccount, paymentDate);
     }
 
 }

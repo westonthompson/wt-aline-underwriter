@@ -2,6 +2,7 @@ package com.aline.underwritermicroservice.service;
 
 import com.aline.core.exception.BadRequestException;
 import com.aline.core.exception.NotFoundException;
+import com.aline.core.exception.notfound.MemberNotFoundException;
 import com.aline.core.model.Applicant;
 import com.aline.core.model.Branch;
 import com.aline.core.model.Member;
@@ -44,6 +45,11 @@ public class MemberService {
 
     public Member saveMember(@Valid Member member) {
         return repository.save(member);
+    }
+
+    public Member getMemberByMembershipId(String membershipId) {
+        return repository.findByMembershipId(membershipId)
+                .orElseThrow(MemberNotFoundException::new);
     }
 
     /**

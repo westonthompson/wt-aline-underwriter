@@ -1,11 +1,20 @@
 package com.aline.underwritermicroservice.service;
 
+import com.aline.core.exception.BadRequestException;
 import com.aline.core.model.Applicant;
 import com.aline.core.model.Application;
 import com.aline.core.model.ApplicationStatus;
+import com.aline.core.model.ApplicationType;
+import com.aline.core.model.loan.Loan;
+import com.aline.core.model.loan.LoanStatus;
+import com.aline.core.repository.LoanRepository;
+import com.aline.underwritermicroservice.model.CreditScoreRating;
 import com.aline.underwritermicroservice.service.function.UnderwriterConsumer;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDate;
+import java.time.Period;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -14,6 +23,7 @@ import java.util.List;
  * <p>Used to approve or deny applications automatically.</p>
  */
 @Service
+@RequiredArgsConstructor
 public class UnderwriterService {
 
     public static class DenyReasons {
@@ -42,6 +52,109 @@ public class UnderwriterService {
         } else {
             underwriterConsumer.respond(ApplicationStatus.DENIED, reasons.toArray(new String[0]));
         }
+    }
+
+    public Loan createLoan(Application application) {
+        if (application.getApplicationType() != ApplicationType.LOAN)
+            throw new BadRequestException("Unable to create a loan with a non-loan application.");
+
+        Applicant applicant = application.getPrimaryApplicant();
+
+        return Loan.builder()
+                .loanType(application.getLoanType())
+                .amount(application.getApplicationAmount())
+                .status(LoanStatus.PENDING)
+                .apr(calculateApr(getCreditScore(applicant)))
+                .term(calculateTerm(application))
+                .startDate(LocalDate.now())
+                .build();
+    }
+
+    public int getCreditScore(Applicant applicant) {
+        // This generates a fake credit score for testing purposes
+        int age = Period.between(applicant.getDateOfBirth(), LocalDate.now()).getYears();
+        int income = applicant.getIncome();
+        int score = 0;
+
+        score += age >= 18 ? 300 : 0;
+        score += age >= 25 ? 200 : 0;
+        score -= income <= 1500000 ? 300 : 0;
+        score += income >= 3000000 ? 200 : 0;
+        score += income >= 5500000 ? 150 : 0;
+
+        return score;
+    }
+
+    public CreditScoreRating rateCreditScore(int creditScore) {
+        CreditScoreRating rating = null;
+
+        if (creditScore >= 300 && creditScore <= 579) {
+            rating = CreditScoreRating.POOR;
+        } else if (creditScore >= 580 && creditScore <= 669) {
+            rating = CreditScoreRating.FAIR;
+        } else if (creditScore >= 670 && creditScore <= 739) {
+            rating  = CreditScoreRating.GOOD;
+        } else if (creditScore >= 740 && creditScore <= 799) {
+            rating = CreditScoreRating.VERY_GOOD;
+        } else if (creditScore >= 800) {
+            rating = CreditScoreRating.EXCELLENT;
+        }
+
+        return rating;
+    }
+
+    public float calculateApr(int creditScore) {
+        CreditScoreRating rating = rateCreditScore(creditScore);
+        switch (rating) {
+            case POOR:
+                return 24.99f;
+            case FAIR:
+                return 18.5f;
+            case GOOD:
+                return 11.5f;
+            case VERY_GOOD:
+                return 8.25f;
+            case EXCELLENT:
+                return 5.99f;
+        }
+        return 30.98f;
+    }
+
+    public int calculateTerm(Application application) {
+        Applicant applicant = application.getPrimaryApplicant();
+        int creditScore = getCreditScore(applicant);
+        CreditScoreRating rating = rateCreditScore(creditScore);
+        int income = applicant.getIncome();
+        int idealIncome = 3000000;
+        int applyAmount = application.getApplicationAmount();
+
+        if (applyAmount < 200000) {
+            return 12;
+        }
+
+        if (income - idealIncome <= 0) {
+            if (applyAmount < 1000000) {
+                return 24;
+            }
+            return 36;
+        }
+
+        if (income - idealIncome >= idealIncome) {
+            if (applyAmount < 1000000) {
+                return 6;
+            }
+            return 12;
+        }
+
+        if (applyAmount > 10000000) {
+            return 60;
+        }
+
+        if (applyAmount > 5000000) {
+            return 48;
+        }
+
+        return 24;
     }
 
     private void checkIncome(Application application, List<String> reasons) {

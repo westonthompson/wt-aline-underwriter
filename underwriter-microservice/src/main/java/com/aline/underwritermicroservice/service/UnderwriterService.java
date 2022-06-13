@@ -7,7 +7,6 @@ import com.aline.core.model.ApplicationStatus;
 import com.aline.core.model.ApplicationType;
 import com.aline.core.model.loan.Loan;
 import com.aline.core.model.loan.LoanStatus;
-import com.aline.core.repository.LoanRepository;
 import com.aline.underwritermicroservice.model.CreditScoreRating;
 import com.aline.underwritermicroservice.service.function.UnderwriterConsumer;
 import lombok.RequiredArgsConstructor;
@@ -123,7 +122,6 @@ public class UnderwriterService {
     public int calculateTerm(Application application) {
         Applicant applicant = application.getPrimaryApplicant();
         int creditScore = getCreditScore(applicant);
-        CreditScoreRating rating = rateCreditScore(creditScore);
         int income = applicant.getIncome();
         int idealIncome = 3000000;
         int applyAmount = application.getApplicationAmount();

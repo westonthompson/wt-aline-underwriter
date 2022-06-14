@@ -57,6 +57,12 @@ public class UnderwriterService {
         if (application.getApplicationType() != ApplicationType.LOAN)
             throw new BadRequestException("Unable to create a loan with a non-loan application.");
 
+        if (application.getLoanType() == null)
+            throw new BadRequestException("Loan type is required if application type is LOAN.");
+
+        if (application.getApplicationAmount() == null)
+            throw new BadRequestException("Application amount is required if application type is LOAN.");
+
         Applicant applicant = application.getPrimaryApplicant();
 
         return Loan.builder()
@@ -121,7 +127,6 @@ public class UnderwriterService {
 
     public int calculateTerm(Application application) {
         Applicant applicant = application.getPrimaryApplicant();
-        int creditScore = getCreditScore(applicant);
         int income = applicant.getIncome();
         int idealIncome = 3000000;
         int applyAmount = application.getApplicationAmount();

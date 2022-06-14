@@ -1,5 +1,6 @@
 package com.aline.underwritermicroservice.service;
 
+import com.aline.core.dto.response.CardResponse;
 import com.aline.core.exception.BadRequestException;
 import com.aline.core.model.Application;
 import com.aline.core.model.ApplicationType;
@@ -9,12 +10,14 @@ import com.aline.core.model.account.AccountStatus;
 import com.aline.core.model.account.CheckingAccount;
 import com.aline.core.model.account.LoanAccount;
 import com.aline.core.model.account.SavingsAccount;
+import com.aline.core.model.card.Card;
 import com.aline.core.model.loan.Loan;
 import com.aline.core.model.payment.Payment;
 import com.aline.core.model.payment.PaymentStatus;
 import com.aline.core.repository.AccountRepository;
 import com.aline.core.repository.LoanRepository;
 import com.aline.core.repository.PaymentRepository;
+import com.aline.core.util.CardUtility;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -44,6 +47,7 @@ public class AccountService {
     private final LoanRepository loanRepository;
     private final PaymentRepository paymentRepository;
     private final UnderwriterService underwriterService;
+    private final CardService cardService;
 
     /**
      * Create a single or multiple accounts based on the applicationType
@@ -103,6 +107,7 @@ public class AccountService {
     public Account createLoan(Application application, Member primaryPayer, Set<Member> payers) {
         if (application.getApplicationType() != ApplicationType.LOAN)
             throw new BadRequestException("Attempting to create a loan with an application type that does not include a loan.");
+
         Loan loan = underwriterService.createLoan(application);
         LoanAccount account = LoanAccount.builder()
                 .primaryAccountHolder(primaryPayer)
@@ -130,6 +135,26 @@ public class AccountService {
         loanAccount.setPaymentHistory(new ArrayList<>());
 
         return loanAccount;
+    }
+
+    public Account createCreditLine(Application application, Member primaryPayer, Set<Member> authorizedUsers) {
+        if (application.getApplicationType() != ApplicationType.CREDIT_CARD)
+            throw new BadRequestException(String.format("Cannot create credit line with application type: %s", application.getApplicationType().name()));
+
+        if (application.getApplicationAmount() == null)
+            throw new BadRequestException("Application amount is required if application type is CREDIT_CARD.");
+
+        int applyAmount = application.getApplicationAmount();
+
+        Account account = Account.builder()
+                .primaryAccountHolder(primaryPayer)
+                .balance(0)
+                .status(AccountStatus.ACTIVE)
+                .members(authorizedUsers)
+                .build();
+
+        return account;
+
     }
 
     public List<Payment> getPaymentAmountsList(int amount, int term, List<Payment> payments, LoanAccount loanAccount, LocalDate paymentDate) {

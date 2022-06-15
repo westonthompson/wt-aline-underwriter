@@ -13,7 +13,6 @@ import com.aline.core.model.card.CardStatus;
 import com.aline.core.model.card.CardType;
 import com.aline.core.model.card.IssuerIdentificationNumber;
 import com.aline.core.model.credit.CreditCardOffer;
-import com.aline.core.model.credit.CreditLine;
 import com.aline.core.util.CardUtility;
 import com.aline.core.util.RandomNumberGenerator;
 import com.aline.underwritermicroservice.repository.CardRepository;

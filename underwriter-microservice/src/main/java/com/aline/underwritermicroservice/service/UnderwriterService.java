@@ -5,6 +5,9 @@ import com.aline.core.model.Applicant;
 import com.aline.core.model.Application;
 import com.aline.core.model.ApplicationStatus;
 import com.aline.core.model.ApplicationType;
+import com.aline.core.model.credit.CreditCardOffer;
+import com.aline.core.model.credit.CreditLine;
+import com.aline.core.model.credit.CreditLineStatus;
 import com.aline.core.model.loan.Loan;
 import com.aline.core.model.loan.LoanStatus;
 import com.aline.underwritermicroservice.model.CreditScoreRating;
@@ -75,6 +78,25 @@ public class UnderwriterService {
                 .build();
     }
 
+    public CreditLine createCreditLine(Application application) {
+
+        CreditCardOffer cardOffer = application.getCardOffer();
+        Applicant applicant = application.getPrimaryApplicant();
+
+        int creditScore = getCreditScore(applicant);
+        float apr = calculateApr(creditScore, cardOffer.getMinApr(), cardOffer.getMaxApr());
+
+        return CreditLine.builder()
+                .creditLineType(cardOffer.getCreditLineType())
+                .minPayment(cardOffer.getMinPayment())
+                .creditLimit(cardOffer.getAmount())
+                .startDate(LocalDate.now())
+                .apr(apr)
+                .status(CreditLineStatus.PENDING)
+                .build();
+
+    }
+
     public int getCreditScore(Applicant applicant) {
         // This generates a fake credit score for testing purposes
         int age = Period.between(applicant.getDateOfBirth(), LocalDate.now()).getYears();
@@ -123,6 +145,21 @@ public class UnderwriterService {
                 return 5.99f;
         }
         return 30.98f;
+    }
+
+    public float calculateApr(int creditScore, float minApr, float maxApr) {
+        CreditScoreRating rating = rateCreditScore(creditScore);
+        switch (rating) {
+            case POOR:
+            case FAIR:
+                return maxApr;
+            case GOOD:
+                return (minApr + maxApr) / 2;
+            case VERY_GOOD:
+            case EXCELLENT:
+                return minApr;
+        }
+        return maxApr;
     }
 
     public int calculateTerm(Application application) {

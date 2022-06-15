@@ -1,20 +1,30 @@
 package com.aline.underwritermicroservice.service;
 
+import com.aline.core.dto.response.CardResponse;
 import com.aline.core.exception.BadRequestException;
+import com.aline.core.exception.notfound.AccountNotFoundException;
 import com.aline.core.model.Application;
 import com.aline.core.model.ApplicationType;
 import com.aline.core.model.Member;
 import com.aline.core.model.account.Account;
 import com.aline.core.model.account.AccountStatus;
 import com.aline.core.model.account.CheckingAccount;
+import com.aline.core.model.account.CreditCardAccount;
 import com.aline.core.model.account.LoanAccount;
 import com.aline.core.model.account.SavingsAccount;
+import com.aline.core.model.card.Card;
+import com.aline.core.model.card.CardStatus;
+import com.aline.core.model.credit.CreditLine;
+import com.aline.core.model.credit.CreditLineStatus;
 import com.aline.core.model.loan.Loan;
+import com.aline.core.model.loan.LoanStatus;
 import com.aline.core.model.payment.Payment;
 import com.aline.core.model.payment.PaymentStatus;
 import com.aline.core.repository.AccountRepository;
 import com.aline.core.repository.LoanRepository;
 import com.aline.core.repository.PaymentRepository;
+import com.aline.core.util.CardUtility;
+import com.aline.underwritermicroservice.repository.CreditLineRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -23,6 +33,7 @@ import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeFormatterBuilder;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
@@ -43,7 +54,9 @@ public class AccountService {
     private final AccountRepository repository;
     private final LoanRepository loanRepository;
     private final PaymentRepository paymentRepository;
+    private final CreditLineRepository creditLineRepository;
     private final UnderwriterService underwriterService;
+    private final CardService cardService;
 
     /**
      * Create a single or multiple accounts based on the applicationType
@@ -69,11 +82,17 @@ public class AccountService {
             case LOAN:
                 accounts.add(createLoan(application, primaryAccountHolder, members));
                 break;
+            case CREDIT_CARD:
+                accounts.add(createCreditCard(application, primaryAccountHolder, members));
             default:
                 break;
         }
 
         return accounts;
+    }
+
+    public Account getAccountByAccountNumber(String accountNumber) {
+        return repository.findByAccountNumber(accountNumber).orElseThrow(AccountNotFoundException::new);
     }
 
     private Account createCheckingAccount(Member primaryAccountHolder, Set<Member> members) {
@@ -103,7 +122,12 @@ public class AccountService {
     public Account createLoan(Application application, Member primaryPayer, Set<Member> payers) {
         if (application.getApplicationType() != ApplicationType.LOAN)
             throw new BadRequestException("Attempting to create a loan with an application type that does not include a loan.");
+
+        Account depositAccount = application.getDepositAccount();
+
         Loan loan = underwriterService.createLoan(application);
+        loan.setStatus(LoanStatus.OPEN);
+        loan.setDepositAccount(depositAccount);
         LoanAccount account = LoanAccount.builder()
                 .primaryAccountHolder(primaryPayer)
                 .balance(0)
@@ -130,6 +154,36 @@ public class AccountService {
         loanAccount.setPaymentHistory(new ArrayList<>());
 
         return loanAccount;
+    }
+
+    @Transactional
+    public Account createCreditCard(Application application, Member primaryPayer, Set<Member> authorizedUsers) {
+        if (application.getApplicationType() != ApplicationType.CREDIT_CARD)
+            throw new BadRequestException(String.format("Cannot create credit line with application type: %s", application.getApplicationType().name()));
+
+        if (application.getCardOffer() == null)
+            throw new BadRequestException("Card offer is required if application type is CREDIT_CARD.");
+
+        CreditLine creditLine = underwriterService.createCreditLine(application);
+        creditLine.setStatus(CreditLineStatus.OPEN);
+
+        CreditCardAccount account = CreditCardAccount.builder()
+                .primaryAccountHolder(primaryPayer)
+                .balance(0)
+                .members(authorizedUsers)
+                .status(AccountStatus.ACTIVE)
+                .creditLine(creditLineRepository.save(creditLine))
+                .payments(new ArrayList<>())
+                .paymentHistory(new ArrayList<>())
+                .cards(new HashSet<>())
+                .build();
+
+        CreditCardAccount creditCardAccount = repository.save(account);
+        Card creditCard = cardService.createCard(application, creditCardAccount);
+        cardService.sendCard(creditCard,false);
+
+        return creditCardAccount;
+
     }
 
     public List<Payment> getPaymentAmountsList(int amount, int term, List<Payment> payments, LoanAccount loanAccount, LocalDate paymentDate) {

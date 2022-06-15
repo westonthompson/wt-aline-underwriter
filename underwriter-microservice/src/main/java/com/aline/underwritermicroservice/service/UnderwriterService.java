@@ -5,9 +5,11 @@ import com.aline.core.model.Applicant;
 import com.aline.core.model.Application;
 import com.aline.core.model.ApplicationStatus;
 import com.aline.core.model.ApplicationType;
+import com.aline.core.model.credit.CreditCardOffer;
+import com.aline.core.model.credit.CreditLine;
+import com.aline.core.model.credit.CreditLineStatus;
 import com.aline.core.model.loan.Loan;
 import com.aline.core.model.loan.LoanStatus;
-import com.aline.core.repository.LoanRepository;
 import com.aline.underwritermicroservice.model.CreditScoreRating;
 import com.aline.underwritermicroservice.service.function.UnderwriterConsumer;
 import lombok.RequiredArgsConstructor;
@@ -58,6 +60,12 @@ public class UnderwriterService {
         if (application.getApplicationType() != ApplicationType.LOAN)
             throw new BadRequestException("Unable to create a loan with a non-loan application.");
 
+        if (application.getLoanType() == null)
+            throw new BadRequestException("Loan type is required if application type is LOAN.");
+
+        if (application.getApplicationAmount() == null)
+            throw new BadRequestException("Application amount is required if application type is LOAN.");
+
         Applicant applicant = application.getPrimaryApplicant();
 
         return Loan.builder()
@@ -68,6 +76,25 @@ public class UnderwriterService {
                 .term(calculateTerm(application))
                 .startDate(LocalDate.now())
                 .build();
+    }
+
+    public CreditLine createCreditLine(Application application) {
+
+        CreditCardOffer cardOffer = application.getCardOffer();
+        Applicant applicant = application.getPrimaryApplicant();
+
+        int creditScore = getCreditScore(applicant);
+        float apr = calculateApr(creditScore, cardOffer.getMinApr(), cardOffer.getMaxApr());
+
+        return CreditLine.builder()
+                .creditLineType(cardOffer.getCreditLineType())
+                .minPayment(cardOffer.getMinPayment())
+                .creditLimit(cardOffer.getAmount())
+                .startDate(LocalDate.now())
+                .apr(apr)
+                .status(CreditLineStatus.PENDING)
+                .build();
+
     }
 
     public int getCreditScore(Applicant applicant) {
@@ -120,10 +147,23 @@ public class UnderwriterService {
         return 30.98f;
     }
 
+    public float calculateApr(int creditScore, float minApr, float maxApr) {
+        CreditScoreRating rating = rateCreditScore(creditScore);
+        switch (rating) {
+            case POOR:
+            case FAIR:
+                return maxApr;
+            case GOOD:
+                return (minApr + maxApr) / 2;
+            case VERY_GOOD:
+            case EXCELLENT:
+                return minApr;
+        }
+        return maxApr;
+    }
+
     public int calculateTerm(Application application) {
         Applicant applicant = application.getPrimaryApplicant();
-        int creditScore = getCreditScore(applicant);
-        CreditScoreRating rating = rateCreditScore(creditScore);
         int income = applicant.getIncome();
         int idealIncome = 3000000;
         int applyAmount = application.getApplicationAmount();

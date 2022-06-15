@@ -19,6 +19,8 @@ import com.aline.core.model.ApplicationStatus;
 import com.aline.core.model.ApplicationType;
 import com.aline.core.model.Member;
 import com.aline.core.model.account.Account;
+import com.aline.core.model.credit.CreditCardOffer;
+import com.aline.core.model.loan.LoanType;
 import com.aline.core.repository.ApplicationRepository;
 import com.aline.core.security.annotation.PermitAll;
 import com.aline.core.security.annotation.RoleIsAdmin;
@@ -71,6 +73,7 @@ public class ApplicationService {
     private final MemberService memberService;
     private final AccountService accountService;
     private final ApplicationEmailService emailService;
+    private final CreditCardOfferService cardOfferService;
     private final ApplicationRepository repository;
     private final ApplicationService proxyService;
 
@@ -120,6 +123,7 @@ public class ApplicationService {
      * existing applicants instead. This will allow for a front end to create applicants first to verify
      * correctness and then apply.
      */
+    @Transactional
     public ApplyResponse apply(@Valid ApplyRequest request, ApplyResponseConsumer responseConsumer) {
 
         log.info("Starting new application: {}", request.getApplicationType());
@@ -172,6 +176,22 @@ public class ApplicationService {
 
             log.info("Create application and application response.");
 
+            if (application.getApplicationType() == ApplicationType.LOAN
+                    && application.getLoanType() == null) {
+                application.setLoanType(LoanType.PERSONAL); // Personal loan is default
+                String depositAccountNum = request.getDepositAccountNumber();
+
+                Account account = accountService.getAccountByAccountNumber(depositAccountNum);
+
+                application.setDepositAccount(account);
+            }
+
+            if (application.getApplicationType() == ApplicationType.CREDIT_CARD) {
+                int cardOfferId = request.getCardOfferId();
+                CreditCardOffer cardOffer = cardOfferService.getOfferById(cardOfferId);
+                application.setCardOffer(cardOffer);
+            }
+
             Application savedApplication = repository.save(application);
             ApplyResponse response = mapper.map(savedApplication, ApplyResponse.class);
 
@@ -182,46 +202,47 @@ public class ApplicationService {
                         response.setStatus(status);
                         response.setReasons(reason);
 
-                        if (status == ApplicationStatus.APPROVED) {
-                            log.info("Application was approved... Creating members.");
-                            LinkedHashSet<Member> members;
-                            if (request.getNoApplicants() && request.getMembershipNumbers() != null) {
-                                members = request.getMembershipNumbers().stream()
-                                        .map(memberService::getMemberByMembershipId)
-                                        .collect(Collectors.toCollection(LinkedHashSet::new));
-                            } else {
-                                members = savedApplication.getApplicants().stream()
-                                        .map(memberService::createMember)
-                                        .collect(Collectors.toCollection(LinkedHashSet::new));
-                            }
+                        if (status != ApplicationStatus.APPROVED)
+                            return;
 
-                            Member primaryMember = members.iterator().next();
-
-                            log.info("Creating accounts: {}", request.getApplicationType());
-                            Set<Account> accounts = accountService.createAccount(savedApplication, primaryMember, members);
-
-                            log.info("Attaching members to accounts...");
-                            members.forEach(member -> member.setAccounts(accounts));
-
-                            List<Member> savedMembers = memberService.saveAll(members);
-
-                            Set<ApplyAccountResponse> createdAccounts = accounts.stream()
-                                            .map(account -> new ApplyAccountResponse(account.getAccountNumber(),
-                                                    account.getClass().getAnnotation(DiscriminatorValue.class).value()))
-                                            .collect(Collectors.toSet());
-
-                            List<ApplyMemberResponse> createdMembers = savedMembers.stream()
-                                            .map(member -> new ApplyMemberResponse(member.getMembershipId(),
-                                                    String.format("%s %s",
-                                                            member.getApplicant().getFirstName(),
-                                                            member.getApplicant().getLastName())))
-                                                    .collect(Collectors.toList());
-
-                            response.setAccountsCreated(true);
-                            response.setCreatedAccounts(createdAccounts);
-                            response.setMembersCreated(true);
-                            response.setCreatedMembers(createdMembers);
+                        log.info("Application was approved... Creating members.");
+                        LinkedHashSet<Member> members;
+                        if (request.getNoApplicants() && request.getMembershipNumbers() != null) {
+                            members = request.getMembershipNumbers().stream()
+                                    .map(memberService::getMemberByMembershipId)
+                                    .collect(Collectors.toCollection(LinkedHashSet::new));
+                        } else {
+                            members = savedApplication.getApplicants().stream()
+                                    .map(memberService::createMember)
+                                    .collect(Collectors.toCollection(LinkedHashSet::new));
                         }
+
+                        Member primaryMember = members.iterator().next();
+
+                        log.info("Creating accounts: {}", request.getApplicationType());
+                        Set<Account> accounts = accountService.createAccount(savedApplication, primaryMember, members);
+
+                        log.info("Attaching members to accounts...");
+                        members.forEach(member -> member.setAccounts(accounts));
+
+                        List<Member> savedMembers = memberService.saveAll(members);
+
+                        Set<ApplyAccountResponse> createdAccounts = accounts.stream()
+                                        .map(account -> new ApplyAccountResponse(account.getAccountNumber(),
+                                                account.getClass().getAnnotation(DiscriminatorValue.class).value()))
+                                        .collect(Collectors.toSet());
+
+                        List<ApplyMemberResponse> createdMembers = savedMembers.stream()
+                                        .map(member -> new ApplyMemberResponse(member.getMembershipId(),
+                                                String.format("%s %s",
+                                                        member.getApplicant().getFirstName(),
+                                                        member.getApplicant().getLastName())))
+                                                .collect(Collectors.toList());
+
+                        response.setAccountsCreated(true);
+                        response.setCreatedAccounts(createdAccounts);
+                        response.setMembersCreated(true);
+                        response.setCreatedMembers(createdMembers);
                     });
 
             // Call onRespond if a responseConsumer was provided.

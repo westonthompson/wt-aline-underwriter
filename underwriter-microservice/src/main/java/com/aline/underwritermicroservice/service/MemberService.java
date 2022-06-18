@@ -37,6 +37,12 @@ public class MemberService {
      */
     @Transactional(rollbackOn = {NotFoundException.class, BadRequestException.class})
     public Member createMember(Applicant applicant) {
+
+        boolean exists = repository.existsMemberByApplicant(applicant);
+
+        if (exists)
+            return repository.findMemberByApplicant(applicant).orElseThrow(MemberNotFoundException::new);
+
         Member member = new Member();
         member.setApplicant(applicant);
         member.setBranch(getBranch(applicant));

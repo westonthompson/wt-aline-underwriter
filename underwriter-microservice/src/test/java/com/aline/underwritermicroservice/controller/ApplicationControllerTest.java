@@ -161,7 +161,7 @@ class ApplicationControllerTest {
         ApplyRequest applyRequest = ApplyRequest.builder()
                 .applicationType(ApplicationType.CHECKING)
                 .applicants(applicants)
-                .noApplicants(false)
+                .noNewApplicants(false)
                 .build();
 
         String body = mapper.writeValueAsString(applyRequest);
@@ -182,7 +182,7 @@ class ApplicationControllerTest {
 
         ApplyRequest request = ApplyRequest.builder()
                 .applicationType(ApplicationType.CHECKING)
-                .noApplicants(true)
+                .noNewApplicants(true)
                 .applicantIds(ids)
                 .build();
 
@@ -205,7 +205,7 @@ class ApplicationControllerTest {
 
         ApplyRequest request = ApplyRequest.builder()
                 .applicationType(ApplicationType.CHECKING)
-                .noApplicants(true)
+                .noNewApplicants(true)
                 .applicantIds(ids)
                 .build();
 
@@ -221,7 +221,7 @@ class ApplicationControllerTest {
     void apply_status_is_badRequest_when_noApplicants_is_true_and_the_applicantIds_are_not_provided() throws Exception {
         ApplyRequest request = ApplyRequest.builder()
                 .applicationType(ApplicationType.CHECKING)
-                .noApplicants(true)
+                .noNewApplicants(true)
                 .build();
 
         String body = mapper.writeValueAsString(request);
@@ -233,7 +233,7 @@ class ApplicationControllerTest {
 
         ApplyRequest request2 = ApplyRequest.builder()
                 .applicationType(ApplicationType.CHECKING)
-                .noApplicants(true)
+                .noNewApplicants(true)
                 .applicantIds(new LinkedHashSet<>())
                 .build();
 

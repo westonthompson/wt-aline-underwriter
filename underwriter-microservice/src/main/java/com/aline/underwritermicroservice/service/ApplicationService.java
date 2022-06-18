@@ -130,7 +130,7 @@ public class ApplicationService {
 
         Application application;
 
-        if (request.getNoApplicants() == null || !request.getNoApplicants()) {
+        if (request.getNoNewApplicants() == null || !request.getNoNewApplicants()) {
 
             log.info("Creating application with new applicants.");
 
@@ -147,17 +147,16 @@ public class ApplicationService {
 
         } else {
 
-            Set<String> membershipNumbers = Optional.ofNullable(request.getMembershipNumbers())
-                    .orElseThrow(() -> new BadRequestException("Field 'noApplicants' was set to true but no existing membership ids were provided."));
+            Set<Long> applicantIds = Optional.ofNullable(request.getApplicantIds())
+                    .orElseThrow(() -> new BadRequestException("Field 'noNewApplicants' was set to true but 'applicantIds' field does not exist in the request."));
 
-            if (membershipNumbers.isEmpty())
-                throw new BadRequestException("Field 'noApplicants' was set to true but field 'applicantIds' is empty.");
+            if (applicantIds.isEmpty())
+                throw new BadRequestException("Field 'noNewApplicants' was set to true but no existing members/applicants were provided.");
 
             log.info("Creating application with existing applicants.");
 
-            LinkedHashSet<Applicant> applicants = membershipNumbers.stream()
-                    .map(memberService::getMemberByMembershipId)
-                    .map(Member::getApplicant)
+            LinkedHashSet<Applicant> applicants = applicantIds.stream()
+                    .map(applicantService::getApplicantById)
                     .map(applicantResponse -> mapper.map(applicantResponse, Applicant.class))
                     .collect(Collectors.toCollection(LinkedHashSet::new));
 
@@ -206,16 +205,9 @@ public class ApplicationService {
                             return;
 
                         log.info("Application was approved... Creating members.");
-                        LinkedHashSet<Member> members;
-                        if (request.getNoApplicants() && request.getMembershipNumbers() != null) {
-                            members = request.getMembershipNumbers().stream()
-                                    .map(memberService::getMemberByMembershipId)
-                                    .collect(Collectors.toCollection(LinkedHashSet::new));
-                        } else {
-                            members = savedApplication.getApplicants().stream()
+                        LinkedHashSet<Member> members = savedApplication.getApplicants().stream()
                                     .map(memberService::createMember)
                                     .collect(Collectors.toCollection(LinkedHashSet::new));
-                        }
 
                         Member primaryMember = members.iterator().next();
 

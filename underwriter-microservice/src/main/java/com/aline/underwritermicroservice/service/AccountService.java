@@ -176,6 +176,7 @@ public class AccountService {
                 .payments(new ArrayList<>())
                 .paymentHistory(new ArrayList<>())
                 .cards(new HashSet<>())
+                .availableCredit(creditLine.getCreditLimit())
                 .build();
 
         CreditCardAccount creditCardAccount = repository.save(account);
